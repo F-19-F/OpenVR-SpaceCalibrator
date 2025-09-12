@@ -407,7 +407,53 @@ void EndContinuousCalibration() {
 	SaveProfile(CalCtx);
 	Metrics::WriteLogAnnotation("EndContinuousCalibration");
 }
+void ApplyReferenceScale() {
+	// CalCtx.Log("ApplyReferenceScale");
+	for (auto& pair : CalCtx.scalePairs)
+	{
+		if (pair.targetID < 0 || pair.targetID >= vr::k_unMaxTrackedDeviceCount)
+		{
+			continue;
+		}
 
+		vr::HmdVector3d_t translation = {0, 0, 0};
+		vr::HmdQuaternion_t rotation = {1, 0, 0, 0}; // Identity
+		bool requestChange = false;
+
+		if (pair.enable)
+		{
+			if (pair.referenceID < 0 || pair.referenceID >= vr::k_unMaxTrackedDeviceCount)
+			{
+				continue;
+			}
+
+			const auto& refPose = CalCtx.deviceCalibratedPoses[pair.referenceID];
+			const auto& targetPose = CalCtx.deviceCalibratedPoses[pair.targetID];
+
+			if (refPose.poseIsValid && targetPose.poseIsValid)
+			{
+				Eigen::Vector3d refPos(refPose.vecPosition[0], refPose.vecPosition[1], refPose.vecPosition[2]);
+				Eigen::Vector3d targetPos(targetPose.vecPosition[0], targetPose.vecPosition[1], targetPose.vecPosition[2]);
+
+				Eigen::Vector3d displacement = (1.0f - pair.scale) * (refPos - targetPos);
+
+				translation.v[0] = displacement.x();
+				translation.v[1] = displacement.y();
+				translation.v[2] = displacement.z();
+				requestChange = true;
+			}
+		}else if (pair.reset){
+			requestChange = true;
+			pair.reset = false;
+		}
+		if(requestChange){
+			protocol::Request req(protocol::RequestSetDeviceScalingTransform);
+			req.setDeviceScalingTransform = {(uint32_t)pair.targetID, translation, rotation};
+			Driver.SendBlocking(req);
+		}
+
+	}
+}
 void CalibrationTick(double time)
 {
 	if (!vr::VRSystem())
@@ -428,12 +474,19 @@ void CalibrationTick(double time)
 	}
 
 	ctx.timeLastTick = time;
+	// 获取原始的坐标，即hook前的
 	shmem.ReadNewPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
 		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
 			ctx.devicePoses[augmented_pose.deviceId] = augmented_pose.pose;
 		}
 	});
-
+	// 校准后的pose
+	shmem.ReadCalibratedPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
+		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
+			ctx.deviceCalibratedPoses[augmented_pose.deviceId] = augmented_pose.pose;
+		}
+	});
+	ApplyReferenceScale();
 	// check for non-updating headset tracking space (caused by quest out of bounds or taken off head for example) and abort everything for this tick
 	auto p = ctx.devicePoses[vr::k_unTrackedDeviceIndex_Hmd].vecPosition;
 	if ((p[0] == 0.0 && p[1] == 0.0 && p[2] == 0.0) || (ctx.xprev == p[0] && ctx.yprev == p[1] && ctx.zprev == p[2])) {

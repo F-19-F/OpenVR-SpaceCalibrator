@@ -25,6 +25,14 @@ struct StandbyDevice {
 	std::string model, serial;
 };
 
+struct ScalePair{
+	int32_t referenceID;
+	int32_t targetID;
+	double scale;
+	bool enable;
+	bool reset;
+};
+
 struct CalibrationContext
 {
 	CalibrationState state = CalibrationState::None;
@@ -77,10 +85,19 @@ struct CalibrationContext
 	Speed calibrationSpeed = FAST;
 
 	vr::DriverPose_t devicePoses[vr::k_unMaxTrackedDeviceCount];
+	vr::DriverPose_t deviceCalibratedPoses[vr::k_unMaxTrackedDeviceCount];
+	ScalePair scalePairs[vr::k_unMaxTrackedDeviceCount];
 
 	CalibrationContext() {
 		calibratedScale = 1.0;
 		memset(devicePoses, 0, sizeof(devicePoses));
+		memset(deviceCalibratedPoses, 0, sizeof(deviceCalibratedPoses));
+		for (auto& pair : scalePairs) {
+			pair.referenceID = -1;
+			pair.targetID = -1;
+			pair.scale = 1.0f;
+			pair.enable = false;
+		}
 		ResetConfig();
 	}
 

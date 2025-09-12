@@ -100,7 +100,8 @@ namespace protocol
 		RequestHandshake,
 		RequestSetDeviceTransform,
 		RequestSetAlignmentSpeedParams,
-		RequestDebugOffset
+		RequestDebugOffset,
+		RequestSetDeviceScalingTransform
 	};
 
 	enum ResponseType
@@ -170,6 +171,16 @@ namespace protocol
 			openVRID(id), enabled(enabled), updateTranslation(true), updateRotation(true), updateScale(true), translation(translation), rotation(rotation), scale(scale), lerp(false), quash(false) { }
 	};
 
+	struct SetDeviceScalingTransform
+	{
+		uint32_t openVRID;
+		vr::HmdQuaternion_t rotation;
+		vr::HmdVector3d_t translation;
+
+		SetDeviceScalingTransform(uint32_t id, vr::HmdVector3d_t translation, vr::HmdQuaternion_t rotation) :
+			openVRID(id), translation(translation), rotation(rotation) {}
+	};
+
 	struct Request
 	{
 		RequestType type;
@@ -177,11 +188,13 @@ namespace protocol
 		union {
 			SetDeviceTransform setDeviceTransform;
 			AlignmentSpeedParams setAlignmentSpeedParams;
+			SetDeviceScalingTransform setDeviceScalingTransform;
 		};
 
 		Request() : type(RequestInvalid), setAlignmentSpeedParams({}) { }
 		Request(RequestType type) : type(type), setAlignmentSpeedParams({}) { }
 		Request(AlignmentSpeedParams params) : type(RequestType::RequestSetAlignmentSpeedParams), setAlignmentSpeedParams(params) {}
+		Request(SetDeviceScalingTransform params) : type(RequestType::RequestSetDeviceScalingTransform), setDeviceScalingTransform(params) {}
 	};
 
 	struct Response
@@ -209,7 +222,9 @@ namespace protocol
 
 		struct ShmemData {
 			std::atomic<uint64_t> index;
+			std::atomic<uint64_t> calibrated_index;
 			AugmentedPose poses[BUFFERED_SAMPLES];
+			AugmentedPose calibrated_poses[BUFFERED_SAMPLES]; // New channel for calibrated (unscaled) poses
 		};
 		
 	private:
@@ -331,19 +346,38 @@ namespace protocol
 			std::atomic_thread_fence(std::memory_order_release);
 		}
 
-		bool GetPose(int index, vr::DriverPose_t& pose, LARGE_INTEGER *pSampleTime = NULL) {
-			ReadNewPoses([this](AugmentedPose const& pose) {
-				if (pose.pose.poseIsValid && pose.pose.result == vr::ETrackingResult::TrackingResult_Running_OK) {
-					this->lastPose[pose.deviceId] = pose;
-				}
-			});
-
-			if (index >= 0 && index < vr::k_unMaxTrackedDeviceCount) {
-				pose = lastPose[index].pose;
-				if (pSampleTime) *pSampleTime = lastPose[index].sample_time;
-				return true;
+		void ReadCalibratedPoses(std::function<void(AugmentedPose const&)> cb) {
+			if (!pData) throw std::runtime_error("Not open");
+			
+			uint64_t cur_index = pData->calibrated_index.load(std::memory_order_acquire);
+			if (cur_index < cursor || cur_index - cursor > BUFFERED_SAMPLES / 2) {
+				if (cur_index < BUFFERED_SAMPLES / 2)
+					cursor = cur_index;
+				else
+					cursor = cur_index - BUFFERED_SAMPLES / 2;
 			}
+
+			while (cursor < cur_index) {
+				cb(pData->calibrated_poses[cursor % BUFFERED_SAMPLES]);
+				cursor++;
+			}
+
+			std::atomic_thread_fence(std::memory_order_release);
 		}
+
+		// bool GetPose(int index, vr::DriverPose_t& pose, LARGE_INTEGER *pSampleTime = NULL) {
+		// 	ReadNewPoses([this](AugmentedPose const& pose) {
+		// 		if (pose.pose.poseIsValid && pose.pose.result == vr::ETrackingResult::TrackingResult_Running_OK) {
+		// 			this->lastPose[pose.deviceId] = pose;
+		// 		}
+		// 	});
+
+		// 	if (index >= 0 && index < vr::k_unMaxTrackedDeviceCount) {
+		// 		pose = lastPose[index].pose;
+		// 		if (pSampleTime) *pSampleTime = lastPose[index].sample_time;
+		// 		return true;
+		// 	}
+		// }
 
 		void SetPose(int index, const vr::DriverPose_t& pose) {
 			if (index >= vr::k_unMaxTrackedDeviceCount) return;
@@ -357,6 +391,20 @@ namespace protocol
 			uint64_t cur_index = pData->index.load(std::memory_order_relaxed) + 1;
 			pData->poses[cur_index % BUFFERED_SAMPLES] = augPose;
 			pData->index.store(cur_index, std::memory_order_release);
+		}
+
+		void SetCalibratedPose(int index, const vr::DriverPose_t& pose) {
+			if (index >= vr::k_unMaxTrackedDeviceCount) return;
+			if (pData == nullptr) return;
+
+			AugmentedPose augPose = {0};
+			augPose.deviceId = index;
+			augPose.pose = pose;
+			QueryPerformanceCounter(&augPose.sample_time);
+
+			uint64_t cur_index = pData->calibrated_index.load(std::memory_order_relaxed) + 1;
+			pData->calibrated_poses[cur_index % BUFFERED_SAMPLES] = augPose;
+			pData->calibrated_index.store(cur_index, std::memory_order_release);
 		}
 	};
 }

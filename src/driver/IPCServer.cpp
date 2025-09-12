@@ -15,7 +15,10 @@ void IPCServer::HandleRequest(const protocol::Request &request, protocol::Respon
 		driver->SetDeviceTransform(request.setDeviceTransform);
 		response.type = protocol::ResponseSuccess;
 		break;
-
+	case protocol::RequestSetDeviceScalingTransform:
+		driver->SetDeviceScalingTransform(request.setDeviceScalingTransform);
+		response.type = protocol::ResponseSuccess;
+		break;
 	case protocol::RequestDebugOffset:
 		driver->HandleApplyRandomOffset();
 		response.type = protocol::ResponseSuccess;
@@ -57,7 +60,8 @@ void IPCServer::Stop()
 
 IPCServer::PipeInstance *IPCServer::CreatePipeInstance(HANDLE pipe)
 {
-	auto pipeInst = new PipeInstance;
+	//fix ipc error 
+	auto pipeInst = new PipeInstance();
 	pipeInst->pipe = pipe;
 	pipeInst->server = this;
 	pipes.insert(pipeInst);

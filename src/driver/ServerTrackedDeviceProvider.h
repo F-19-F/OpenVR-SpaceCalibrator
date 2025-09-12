@@ -43,6 +43,7 @@ public:
 
 	ServerTrackedDeviceProvider() : server(this) { }
 	void SetDeviceTransform(const protocol::SetDeviceTransform &newTransform);
+	void SetDeviceScalingTransform(const protocol::SetDeviceScalingTransform &newTransform); // ADDED: Handler for new IPC message
 	bool HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t &pose);
 	void HandleApplyRandomOffset();
 	void HandleSetAlignmentSpeedParams(const protocol::AlignmentSpeedParams params) {
@@ -64,6 +65,7 @@ private:
 		bool enabled = false;
 		bool quash = false;
 		IsoTransform transform, targetTransform;
+		IsoTransform scalingTransform; // ADDED: For dynamic scaling
 		double scale;
 		LARGE_INTEGER lastPoll;
 		DeltaSize currentRate = DeltaSize::TINY;

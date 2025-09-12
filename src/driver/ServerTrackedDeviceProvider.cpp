@@ -204,6 +204,13 @@ void ServerTrackedDeviceProvider::SetDeviceTransform(const protocol::SetDeviceTr
 	tf.quash = newTransform.quash;
 }
 
+void ServerTrackedDeviceProvider::SetDeviceScalingTransform(const protocol::SetDeviceScalingTransform& newTransform)
+{
+	auto& tf = transforms[newTransform.openVRID];
+	tf.scalingTransform.translation = convert(newTransform.translation);
+	tf.scalingTransform.rotation = convert(newTransform.rotation);
+}
+
 bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t &pose)
 {
 	// Apply debug pose before anything else
@@ -220,7 +227,7 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 
 	auto& tf = transforms[openVRID];
 
-	if (tf.quash) {
+	if (tf.quash) { //隐藏逻辑
 		pose.vecPosition[0] = -pose.vecWorldFromDriverTranslation[0];
 		pose.vecPosition[1] = -pose.vecWorldFromDriverTranslation[1] + 9001; // put it 9001m above the origin
 		pose.vecPosition[2] = -pose.vecWorldFromDriverTranslation[2];
@@ -237,6 +244,19 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 
 		BlendTransform(tf, deviceWorldPose);
 		ApplyTransform(tf, pose);
+		// 校准后的pose，没有scale
+		shmem.SetCalibratedPose(openVRID, pose);
+
+		auto pos = convert(pose.vecPosition);
+		// auto rot = convert(pose.qRotation);
+
+		pos = pos + tf.scalingTransform.translation;
+		// rot = tf.scalingTransform.rotation * rot;
+
+		pose.vecPosition[0] = pos.x();
+		pose.vecPosition[1] = pos.y();
+		pose.vecPosition[2] = pos.z();
+		// pose.qRotation = convert(rot);
 	}
 
 	return true;

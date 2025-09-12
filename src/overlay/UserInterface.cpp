@@ -19,6 +19,7 @@ void DrawVectorElement(const std::string id, const char* text, double* value, in
 VRState LoadVRState();
 void BuildSystemSelection(const VRState &state);
 void BuildDeviceSelections(const VRState &state);
+void BuildScalePairDeviceSelections(const VRState &state,uint16_t index);
 void BuildProfileEditor();
 void BuildMenu(bool runningInOverlay);
 
@@ -89,6 +90,7 @@ void ShowVersionLine() {
 
 void CCal_BasicInfo();
 void CCal_DrawSettings();
+void CCal_DrawScales();
 
 void BuildContinuousCalDisplay() {
 	ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -124,6 +126,11 @@ void BuildContinuousCalDisplay() {
 		
 		if (ImGui::BeginTabItem("Settings")) {
 			CCal_DrawSettings();
+			ImGui::EndTabItem();
+		}
+
+		if (ImGui::BeginTabItem("Scales")) {
+			CCal_DrawScales();
 			ImGui::EndTabItem();
 		}
 
@@ -355,6 +362,12 @@ void CCal_DrawSettings() {
 	}
 }
 
+void CCal_DrawScales() {
+	auto state = LoadVRState();
+	BuildScalePairDeviceSelections(state,0);
+	BuildScalePairDeviceSelections(state,1);
+	BuildScalePairDeviceSelections(state,3);
+}
 void DrawVectorElement(const std::string id, const char* text, double* value, int defaultValue, const char* defaultValueStr) {
 	constexpr float CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA = 0.01f;
 
@@ -902,6 +915,26 @@ void BuildDeviceSelections(const VRState &state)
 			vr::VRSystem()->TriggerHapticPulse(CalCtx.referenceID, 0, 2000);
 			std::this_thread::sleep_for(std::chrono::milliseconds(5));
 		}
+	}
+}
+void BuildScalePairDeviceSelections(const VRState &state,uint16_t index)
+{
+	ImGuiStyle &style = ImGui::GetStyle();
+	ImVec2 paneSize(ImGui::GetWindowContentRegionWidth() / 2 - style.FramePadding.x, ImGui::GetTextLineHeightWithSpacing() * 5 + style.ItemSpacing.y * 4);
+
+	ImGui::BeginChild(("reference device pane"+std::to_string(index)).c_str(), paneSize, ImGuiChildFlags_Borders);
+	StandbyDevice igonre;
+	BuildDeviceSelection(state, CalCtx.scalePairs[index].referenceID, CalCtx.targetTrackingSystem, igonre);
+	ImGui::EndChild();
+
+	ImGui::SameLine();
+
+	ImGui::BeginChild(("target device pane"+std::to_string(index)).c_str(), paneSize, ImGuiChildFlags_Borders);
+	BuildDeviceSelection(state, CalCtx.scalePairs[index].targetID, CalCtx.targetTrackingSystem, igonre);
+	ImGui::EndChild();
+	ScaledDragFloat(("scale"+std::to_string(index)).c_str(), CalCtx.scalePairs[index].scale, 1.0, 0, 2.0, 0);
+	if(ImGui::Checkbox(("enable"+std::to_string(index)).c_str(),&CalCtx.scalePairs[index].enable) && !CalCtx.scalePairs[index].enable){
+		CalCtx.scalePairs[index].reset = true;
 	}
 }
 

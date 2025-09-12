@@ -540,7 +540,29 @@ void RunLoop() {
 
 void VerifySetupCorrect() {
 	// register the manifest so that it shows up in the overlays menu
-	if (!vr::VRApplications()->IsApplicationInstalled(OPENVR_APPLICATION_KEY)) {
+	// if (!vr::VRApplications()->IsApplicationInstalled(OPENVR_APPLICATION_KEY)) {
+		std::cout << "Found last version of Space Calibrator..." << std::endl;
+		// GitHub key is installed, uninstall it
+		vr::EVRApplicationError appErr = vr::EVRApplicationError::VRApplicationError_None;
+		char manifestPathBuffer[MAX_PATH + 32 /* for good measure */] = {};
+		uint32_t szBufferSize = vr::VRApplications()->GetApplicationPropertyString(OPENVR_APPLICATION_KEY, vr::VRApplicationProperty_BinaryPath_String, manifestPathBuffer, sizeof(manifestPathBuffer), &appErr);
+		if (appErr != vr::VRApplicationError_None) {
+			std::cout << "Failed to get binary path of " << OPENVR_APPLICATION_KEY << std::endl;
+			return;
+		}
+		
+		// replace XXX.exe with manifest.vrmanifest
+		const char* newFileName = "manifest.vrmanifest";
+		char* lastSlash = strrchr(manifestPathBuffer, '\\');
+		if (lastSlash) {
+			*(lastSlash + 1) = '\0';
+			strcat(manifestPathBuffer, newFileName);
+		}
+
+		appErr = vr::VRApplications()->RemoveApplicationManifest(manifestPathBuffer);
+		if (appErr != vr::VRApplicationError_None) {
+			std::cout << "Failed to remove last application manifest. You may have duplicate entries in the overlays list." << std::endl;
+		}
 		std::string manifestPath = std::format("{}\\{}", cwd, "manifest.vrmanifest");
 		std::cout << "Adding manifest path: " << manifestPath << std::endl;
 		// If manifest is not installed, try installing it, and set it to auto-start with SteamVR
@@ -550,10 +572,11 @@ void VerifySetupCorrect() {
 		} else {
 			vr::VRApplications()->SetApplicationAutoLaunch(OPENVR_APPLICATION_KEY, true);
 		}
-	} else {
-		// Application is already registered, do not alter settings
-		std::cout << "Space Calibrator already registered with SteamVR. Skipping..." << std::endl;
-	}
+	// }
+	// } else {
+	// 	// Application is already registered, do not alter settings
+	// 	std::cout << "Space Calibrator already registered with SteamVR. Skipping..." << std::endl;
+	// }
 
 	// try removing the legacy app manifest from Steam, otherwise people will have multiple entries in the overlays menu
 	if (vr::VRApplications()->IsApplicationInstalled(LEGACY_OPENVR_APPLICATION_KEY)) {
