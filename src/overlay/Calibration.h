@@ -6,6 +6,7 @@
 #include <openvr.h>
 #include <vector>
 #include <deque>
+#include <mutex>
 
 #include "Protocol.h"
 #include "IPCClient.h"
@@ -188,9 +189,11 @@ struct CalibrationContext
 	};
 
 	std::deque<Message> messages;
+	mutable std::mutex messagesMtx;
 
 	void Log(const std::string &msg)
 	{
+		std::lock_guard<std::mutex> lock(messagesMtx);
 		if (clearOnLog) {
 			messages.clear();
 			clearOnLog = false;
@@ -209,11 +212,18 @@ struct CalibrationContext
 
 	void Progress(int current, int target)
 	{
+		std::lock_guard<std::mutex> lock(messagesMtx);
 		if (messages.empty() || messages.back().type == Message::String)
 			messages.push_back(Message(Message::Progress));
 
 		messages.back().progress = current;
 		messages.back().target = target;
+	}
+
+	void ClearMessages()
+	{
+		std::lock_guard<std::mutex> lock(messagesMtx);
+		messages.clear();
 	}
 
 	bool TargetPoseIsValidSimple() const {

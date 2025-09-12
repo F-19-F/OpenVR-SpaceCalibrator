@@ -380,7 +380,7 @@ void StartCalibration() {
 	AssignTargets();
 	CalCtx.state = CalibrationState::Begin;
 	CalCtx.wantedUpdateInterval = 0.0;
-	CalCtx.messages.clear();
+	CalCtx.ClearMessages();
 	calibration.Clear();
 	Metrics::WriteLogAnnotation("StartCalibration");
 }
@@ -648,7 +648,7 @@ void CalibrationTick(double time)
 	bool lerp = false;
 
 	if (CalCtx.state == CalibrationState::Continuous) {
-		CalCtx.messages.clear();
+		CalCtx.ClearMessages();
 		calibration.enableStaticRecalibration = CalCtx.enableStaticRecalibration;
 		calibration.lockRelativePosition = CalCtx.lockRelativePosition;
 		calibration.ComputeIncremental(lerp, CalCtx.continuousCalibrationThreshold, CalCtx.maxRelativeErrorThreshold, CalCtx.ignoreOutliers);

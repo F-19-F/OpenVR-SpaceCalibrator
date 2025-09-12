@@ -496,7 +496,7 @@ void CCal_BasicInfo() {
 	// Status field...
 
 	ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0, 0, 0, 1));
-
+	std::lock_guard<std::mutex> lock(CalCtx.messagesMtx);
 	for (const auto& msg : CalCtx.messages) {
 		if (msg.type == CalibrationContext::Message::String) {
 			ImGui::TextWrapped("> %s", msg.str.c_str());
@@ -625,6 +625,7 @@ void BuildMenu(bool runningInOverlay)
 	if (ImGui::BeginPopupModal("Calibration Progress", nullptr, bareWindowFlags))
 	{
 		ImGui::PushStyleColor(ImGuiCol_FrameBg, (ImVec4)ImVec4(0, 0, 0, 1));
+		std::lock_guard<std::mutex> lock(CalCtx.messagesMtx);
 		for (auto &message : CalCtx.messages)
 		{
 			switch (message.type)
