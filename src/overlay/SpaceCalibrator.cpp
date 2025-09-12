@@ -20,6 +20,8 @@
 #include <dwmapi.h>
 #include <algorithm>
 #include <filesystem>
+#include <mutex>
+#include <condition_variable>
 
 #include <shellapi.h>
 
@@ -33,7 +35,7 @@ processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #define OPENVR_APPLICATION_KEY "steam.overlay.3368750"
 std::string c_SPACE_CALIBRATOR_STEAM_APP_ID = "3368750";
 std::string c_STEAMVR_STEAM_APP_ID = "250820";
-constexpr const char* STEAM_MUTEX_KEY = "Global\\MUTEX__SpaceCalibrator_Steam";
+constexpr const char* STEAM_MUTEX_KEY = "Global\MUTEX__SpaceCalibrator_Steam";
 HANDLE hSteamMutex = INVALID_HANDLE_VALUE;
 bool s_isGitHubVersionInstalled = false;
 
@@ -103,6 +105,32 @@ const bool EnableDarkModeTopBar(const HWND windowHwmd) {
 		SUCCEEDED(DwmSetWindowAttribute(windowHwmd, DWMA_USE_IMMERSIVE_DARK_MODE, &darkBorder, sizeof(darkBorder)))
 		|| SUCCEEDED(DwmSetWindowAttribute(windowHwmd, DWMA_USE_IMMERSIVE_DARK_MODE_PRE_20H1, &darkBorder, sizeof(darkBorder)));
 	return ok;
+}
+
+// For CalibrationTick worker thread
+static std::mutex g_calibrationMutex;
+static std::condition_variable g_calibrationCv;
+static bool g_calibrationWorkerRunning = true;
+static bool g_calibrationTickPending = false;
+
+void CalibrationWorker()
+{
+	std::unique_lock<std::mutex> lock(g_calibrationMutex);
+	while (g_calibrationWorkerRunning)
+	{
+		g_calibrationCv.wait(lock, [] { return g_calibrationTickPending || !g_calibrationWorkerRunning; });
+		if (!g_calibrationWorkerRunning)
+		{
+			break;
+		}
+
+		double time = glfwGetTime();
+		g_calibrationTickPending = false;
+
+		lock.unlock();
+		CalibrationTick(time);
+		lock.lock();
+	}
 }
 
 void CreateGLFWWindow()
@@ -336,7 +364,11 @@ void RunLoop() {
 	{
 		TryCreateVROverlay();
 		double time = glfwGetTime();
-		CalibrationTick(time);
+		{
+			std::lock_guard<std::mutex> lock(g_calibrationMutex);
+			g_calibrationTickPending = true;
+			g_calibrationCv.notify_one();
+		}
 
 		bool dashboardVisible = false;
 		int width, height;
@@ -524,7 +556,7 @@ void RunLoop() {
 		glfwWaitEventsTimeout(waitEventsTimeout);
 
 		// If we're minimized rendering won't limit our frame rate so we need to do it ourselves.
-		if (glfwGetWindowAttrib(glfwWindow, GLFW_ICONIFIED))
+		if (glfwGetWindowAttrib(glfwWindow, GLFW_ICONIFIED) && !dashboardVisible)
 		{
 			double targetFrameTime = 1 / MINIMIZED_MAX_FPS;
 			double waitTime = targetFrameTime - (glfwGetTime() - lastFrameStartTime);
@@ -705,7 +737,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		CreateGLFWWindow();
 		InitCalibrator();
 		LoadProfile(CalCtx);
+		std::thread calibrationThread(CalibrationWorker);
 		RunLoop();
+
+		{
+			std::lock_guard<std::mutex> lock(g_calibrationMutex);
+			g_calibrationWorkerRunning = false;
+			g_calibrationCv.notify_one();
+		}
+		calibrationThread.join();
 
 		vr::VR_Shutdown();
 

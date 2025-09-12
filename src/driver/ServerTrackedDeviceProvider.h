@@ -26,7 +26,7 @@ public:
 	virtual const char * const *GetInterfaceVersions() { return vr::k_InterfaceVersions; }
 
 	/** Allows the driver do to some work in the main loop of the server. */
-	virtual void RunFrame() { }
+	virtual void RunFrame();
 
 	/** Returns true if the driver wants to block Standby mode. */
 	virtual bool ShouldBlockStandbyMode() { return false; }
@@ -44,6 +44,7 @@ public:
 	ServerTrackedDeviceProvider() : server(this) { }
 	void SetDeviceTransform(const protocol::SetDeviceTransform &newTransform);
 	void SetDeviceScalingTransform(const protocol::SetDeviceScalingTransform &newTransform); // ADDED: Handler for new IPC message
+	void SetDeviceReferenceScale(const protocol::SetDeviceReferenceScale &newScale); // ADDED: Handler for new IPC message
 	bool HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t &pose);
 	void HandleApplyRandomOffset();
 	void HandleSetAlignmentSpeedParams(const protocol::AlignmentSpeedParams params) {
@@ -72,6 +73,17 @@ private:
 	};
 
 	DeviceTransform transforms[vr::k_unMaxTrackedDeviceCount];
+	vr::DriverPose_t calibratedPoses[vr::k_unMaxTrackedDeviceCount];
+
+	struct ScalePair{
+		int32_t referenceID = -1;
+		int32_t targetID = -1;
+		double scale = 1.0;
+		bool enable = false;
+		bool reset = false;
+	};
+	
+	ScalePair scalePairs[vr::k_unMaxTrackedDeviceCount];
 	Eigen::Vector3d debugTransform;
 	Eigen::Quaterniond debugRotation;
 
@@ -90,4 +102,5 @@ private:
 
 	void BlendTransform(DeviceTransform& device, const IsoTransform& deviceWorldPose) const;
 	void ApplyTransform(DeviceTransform& device, vr::DriverPose_t& devicePose) const;
+	void ApplyReferenceScale();
 };

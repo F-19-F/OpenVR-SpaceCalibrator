@@ -924,6 +924,7 @@ void BuildScalePairDeviceSelections(const VRState &state,uint16_t index)
 
 	ImGui::BeginChild(("reference device pane"+std::to_string(index)).c_str(), paneSize, ImGuiChildFlags_Borders);
 	StandbyDevice igonre;
+	ScalePair oldpair = CalCtx.scalePairs[index];
 	BuildDeviceSelection(state, CalCtx.scalePairs[index].referenceID, CalCtx.targetTrackingSystem, igonre);
 	ImGui::EndChild();
 
@@ -933,8 +934,20 @@ void BuildScalePairDeviceSelections(const VRState &state,uint16_t index)
 	BuildDeviceSelection(state, CalCtx.scalePairs[index].targetID, CalCtx.targetTrackingSystem, igonre);
 	ImGui::EndChild();
 	ScaledDragFloat(("scale"+std::to_string(index)).c_str(), CalCtx.scalePairs[index].scale, 1.0, 0, 2.0, 0);
-	if(ImGui::Checkbox(("enable"+std::to_string(index)).c_str(),&CalCtx.scalePairs[index].enable) && !CalCtx.scalePairs[index].enable){
-		CalCtx.scalePairs[index].reset = true;
+	ImGui::Checkbox(("enable"+std::to_string(index)).c_str(),&CalCtx.scalePairs[index].enable);
+	
+	if(memcmp(&oldpair,&CalCtx.scalePairs[index],sizeof ScalePair)){
+		if(CalCtx.scalePairs[index].targetID < 0 || CalCtx.scalePairs[index].referenceID < 0 || CalCtx.scalePairs[index].targetID > vr::k_unMaxTrackedDeviceCount || CalCtx.scalePairs[index].referenceID > vr::k_unMaxTrackedDeviceCount){
+			return;
+		}
+		protocol::Request req(protocol::RequestSetDeviceReferenceScale);
+		req.setDeviceReferenceScale = {
+			static_cast<uint32_t>(CalCtx.scalePairs[index].targetID),
+			static_cast<uint32_t>(CalCtx.scalePairs[index].referenceID),
+			CalCtx.scalePairs[index].enable,
+			CalCtx.scalePairs[index].scale
+		};
+		Driver.SendBlocking(req);
 	}
 }
 

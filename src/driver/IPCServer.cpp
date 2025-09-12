@@ -15,10 +15,17 @@ void IPCServer::HandleRequest(const protocol::Request &request, protocol::Respon
 		driver->SetDeviceTransform(request.setDeviceTransform);
 		response.type = protocol::ResponseSuccess;
 		break;
+
 	case protocol::RequestSetDeviceScalingTransform:
 		driver->SetDeviceScalingTransform(request.setDeviceScalingTransform);
 		response.type = protocol::ResponseSuccess;
 		break;
+
+	case protocol::RequestSetDeviceReferenceScale:
+		driver->SetDeviceReferenceScale(request.setDeviceReferenceScale);
+		response.type = protocol::ResponseSuccess;
+		break;
+
 	case protocol::RequestDebugOffset:
 		driver->HandleApplyRandomOffset();
 		response.type = protocol::ResponseSuccess;

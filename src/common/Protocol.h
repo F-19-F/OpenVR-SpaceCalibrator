@@ -101,7 +101,8 @@ namespace protocol
 		RequestSetDeviceTransform,
 		RequestSetAlignmentSpeedParams,
 		RequestDebugOffset,
-		RequestSetDeviceScalingTransform
+		RequestSetDeviceScalingTransform,
+		RequestSetDeviceReferenceScale
 	};
 
 	enum ResponseType
@@ -181,6 +182,16 @@ namespace protocol
 			openVRID(id), translation(translation), rotation(rotation) {}
 	};
 
+	struct SetDeviceReferenceScale
+	{
+		uint32_t openVRID;
+		uint32_t referenceID;
+		bool enable;
+		double scale;
+		SetDeviceReferenceScale(uint32_t id, uint32_t referenceID,bool enable, double scale) :
+			openVRID(id), referenceID(referenceID), enable(enable) ,scale(scale) {}
+	};
+
 	struct Request
 	{
 		RequestType type;
@@ -189,12 +200,14 @@ namespace protocol
 			SetDeviceTransform setDeviceTransform;
 			AlignmentSpeedParams setAlignmentSpeedParams;
 			SetDeviceScalingTransform setDeviceScalingTransform;
+			SetDeviceReferenceScale setDeviceReferenceScale;
 		};
 
 		Request() : type(RequestInvalid), setAlignmentSpeedParams({}) { }
 		Request(RequestType type) : type(type), setAlignmentSpeedParams({}) { }
 		Request(AlignmentSpeedParams params) : type(RequestType::RequestSetAlignmentSpeedParams), setAlignmentSpeedParams(params) {}
 		Request(SetDeviceScalingTransform params) : type(RequestType::RequestSetDeviceScalingTransform), setDeviceScalingTransform(params) {}
+		Request(SetDeviceReferenceScale params) : type(RequestType::RequestSetDeviceReferenceScale), setDeviceReferenceScale(params) {}
 	};
 
 	struct Response

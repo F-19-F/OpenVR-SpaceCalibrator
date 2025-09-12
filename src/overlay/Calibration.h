@@ -8,6 +8,7 @@
 #include <deque>
 
 #include "Protocol.h"
+#include "IPCClient.h"
 
 enum class CalibrationState
 {
@@ -239,3 +240,4 @@ void ApplyChaperoneBounds();
 void PushCalibrationApplyTime();
 void ShowCalibrationDebug(int r, int c);
 void DebugApplyRandomOffset();
+extern IPCClient Driver; 

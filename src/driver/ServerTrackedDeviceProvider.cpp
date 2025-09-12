@@ -35,6 +35,11 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext *pDriver
 	return vr::VRInitError_None;
 }
 
+void ServerTrackedDeviceProvider::RunFrame()
+{
+	ApplyReferenceScale();
+}
+
 void ServerTrackedDeviceProvider::Cleanup()
 {
 	TRACE("ServerTrackedDeviceProvider::Cleanup()");
@@ -160,7 +165,52 @@ void ServerTrackedDeviceProvider::ApplyTransform(DeviceTransform& device, vr::Dr
 	devicePose.vecWorldFromDriverTranslation[2] = deviceWorldTransform.translation(2);
 	devicePose.qWorldFromDriverRotation = convert(deviceWorldTransform.rotation);
 }
+void ServerTrackedDeviceProvider::ApplyReferenceScale() {
+	for (auto& pair : scalePairs)
+	{
+		if (pair.targetID < 0 || pair.targetID >= vr::k_unMaxTrackedDeviceCount)
+		{
+			continue;
+		}
 
+		vr::HmdVector3d_t translation = {0, 0, 0};
+		vr::HmdQuaternion_t rotation = {1, 0, 0, 0}; // Identity
+		bool requestChange = false;
+
+		if (pair.enable)
+		{
+			if (pair.referenceID < 0 || pair.referenceID >= vr::k_unMaxTrackedDeviceCount)
+			{
+				continue;
+			}
+
+			const auto& refPose = calibratedPoses[pair.referenceID];
+			const auto& targetPose = calibratedPoses[pair.targetID];
+
+			if (refPose.poseIsValid && targetPose.poseIsValid)
+			{
+				Eigen::Vector3d refPos(refPose.vecPosition[0], refPose.vecPosition[1], refPose.vecPosition[2]);
+				Eigen::Vector3d targetPos(targetPose.vecPosition[0], targetPose.vecPosition[1], targetPose.vecPosition[2]);
+
+				Eigen::Vector3d displacement = (1.0f - pair.scale) * (refPos - targetPos);
+
+				translation.v[0] = displacement.x();
+				translation.v[1] = displacement.y();
+				translation.v[2] = displacement.z();
+				requestChange = true;
+			}
+		}else if (pair.reset){
+			requestChange = true;
+			pair.reset = false;
+		}
+		if(requestChange){
+			auto& tf = transforms[pair.targetID];
+			tf.scalingTransform.translation = convert(translation);
+			tf.scalingTransform.rotation = convert(rotation);
+		}
+
+	}
+}
 
 inline vr::HmdQuaternion_t operator*(const vr::HmdQuaternion_t &lhs, const vr::HmdQuaternion_t &rhs) {
 	return {
@@ -211,6 +261,18 @@ void ServerTrackedDeviceProvider::SetDeviceScalingTransform(const protocol::SetD
 	tf.scalingTransform.rotation = convert(newTransform.rotation);
 }
 
+void ServerTrackedDeviceProvider::SetDeviceReferenceScale(const protocol::SetDeviceReferenceScale& newScale)
+{
+	auto& scale = scalePairs[newScale.openVRID];
+	scale.targetID = newScale.openVRID;
+	scale.referenceID = newScale.referenceID;
+	scale.scale = newScale.scale;
+	scale.enable = newScale.enable;
+	if(!scale.enable){
+		scale.reset = true;
+	}
+}
+
 bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr::DriverPose_t &pose)
 {
 	// Apply debug pose before anything else
@@ -245,7 +307,8 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 		BlendTransform(tf, deviceWorldPose);
 		ApplyTransform(tf, pose);
 		// 校准后的pose，没有scale
-		shmem.SetCalibratedPose(openVRID, pose);
+		// shmem.SetCalibratedPose(openVRID, pose);
+		calibratedPoses[openVRID]=pose;
 
 		auto pos = convert(pose.vecPosition);
 		// auto rot = convert(pose.qRotation);
