@@ -265,11 +265,13 @@ void InitVR()
 {
 	auto initError = vr::VRInitError_None;
 	vr::VR_Init(&initError, vr::VRApplication_Overlay);
+	//vr::ETrackedPropertyError error = vr::TrackedProp_Success;
 	if (initError != vr::VRInitError_None) {
 		auto error = vr::VR_GetVRInitErrorAsEnglishDescription(initError);
 		throw std::runtime_error("OpenVR error:" + std::string(error));
 	}
-
+	//float displayFrequency = vs->GetFloatTrackedDeviceProperty(vr::k_unTrackedDeviceIndex_Hmd, vr::Prop_DisplayFrequency_Float, &error);
+	//std::cout << "fps " << displayFrequency << std::endl;
 	if (!vr::VR_IsInterfaceVersionValid(vr::IVRSystem_Version)) {
 		throw std::runtime_error("OpenVR error: Outdated IVRSystem_Version");
 	} else if (!vr::VR_IsInterfaceVersionValid(vr::IVRSettings_Version)) {

@@ -13,6 +13,118 @@
 #include <Eigen/Dense>
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
+
+struct TrackerInfo {
+	int id;
+	Eigen::Vector3d pos;
+};
+
+bool findBodyTrackers(BodyTrackerIDs& result) {
+
+    // 1. 确认头显(HMD)是有效的
+    const vr::DriverPose_t& hmdPose = CalCtx.devicePoses[vr::k_unTrackedDeviceIndex_Hmd];
+    if (!hmdPose.poseIsValid || !hmdPose.deviceIsConnected) {
+        CalCtx.Log("HMD not tracked or connected. Cannot determine body tracking orientation.");
+        return false;
+    }
+
+	Eigen::Quaterniond hmd_wfd_rot(
+		hmdPose.qWorldFromDriverRotation.w,
+		hmdPose.qWorldFromDriverRotation.x,
+		hmdPose.qWorldFromDriverRotation.y,
+		hmdPose.qWorldFromDriverRotation.z
+	);
+    Eigen::Vector3d hmd_wfd_trans(hmdPose.vecWorldFromDriverTranslation);
+	Eigen::Quaterniond hmd_local_rot(
+		hmdPose.qRotation.w,
+		hmdPose.qRotation.x,
+		hmdPose.qRotation.y,
+		hmdPose.qRotation.z
+	);
+     Eigen::Vector3d hmd_local_pos(hmdPose.vecPosition);
+    
+     Eigen::Quaterniond hmd_world_orientation = hmd_wfd_rot * hmd_local_rot;
+     Eigen::Vector3d hmd_world_pos = hmd_wfd_rot * hmd_local_pos + hmd_wfd_trans;
+    
+    // // “右”向量是世界姿态旋转矩阵的第一列 (X轴)
+     Eigen::Vector3d hmd_right_vec = hmd_world_orientation.toRotationMatrix().col(0);
+
+    std::vector<TrackerInfo> activeTrackers;
+
+    for (uint32_t i = 1; i < vr::k_unMaxTrackedDeviceCount; ++i) {
+        const vr::DriverPose_t& pose = CalCtx.deviceCalibratedPoses[i];
+        if (pose.poseIsValid && pose.result == vr::TrackingResult_Running_OK) {
+            
+            Eigen::Quaterniond tracker_wfd_rot(pose.qWorldFromDriverRotation.w, pose.qWorldFromDriverRotation.x, pose.qWorldFromDriverRotation.y, pose.qWorldFromDriverRotation.z);
+            Eigen::Vector3d tracker_wfd_trans(pose.vecWorldFromDriverTranslation);
+            Eigen::Vector3d tracker_local_pos(pose.vecPosition);
+
+            Eigen::Vector3d tracker_world_pos = tracker_wfd_rot * tracker_local_pos + tracker_wfd_trans;
+            
+            activeTrackers.push_back({(int)i, tracker_world_pos});
+        }
+    }
+    if (activeTrackers.empty()) {
+        return false;
+    }
+
+    std::sort(activeTrackers.begin(), activeTrackers.end(), [](const TrackerInfo& a, const TrackerInfo& b) {
+        return a.pos.y() < b.pos.y();
+    });
+
+    // 5. 根据排序结果和左右关系进行识别
+
+    // -- 识别脚部 (最低的两个) --
+    if (activeTrackers.size() >= 2) {
+        TrackerInfo& trackerA = activeTrackers[0];
+        TrackerInfo& trackerB = activeTrackers[1];
+
+        Eigen::Vector3d vecA = trackerA.pos - hmd_world_pos;
+        Eigen::Vector3d vecB = trackerB.pos - hmd_world_pos;
+        vecA.y() = 0; // 投影到水平面
+        vecB.y() = 0;
+        
+        if (vecA.dot(hmd_right_vec) > vecB.dot(hmd_right_vec)) {
+            result.rightFoot = trackerA.id;
+            result.leftFoot = trackerB.id;
+        } else {
+            result.leftFoot = trackerA.id;
+            result.rightFoot = trackerB.id;
+        }
+    }
+
+    // -- 识别膝盖 (接下来的两个) --
+    if (activeTrackers.size() >= 4) {
+        TrackerInfo& trackerA = activeTrackers[2];
+        TrackerInfo& trackerB = activeTrackers[3];
+        
+        Eigen::Vector3d vecA = trackerA.pos - hmd_world_pos;
+        Eigen::Vector3d vecB = trackerB.pos - hmd_world_pos;
+        vecA.y() = 0;
+        vecB.y() = 0;
+        
+        if (vecA.dot(hmd_right_vec) > vecB.dot(hmd_right_vec)) {
+            result.rightKnee = trackerA.id;
+            result.leftKnee = trackerB.id;
+        } else {
+            result.leftKnee = trackerA.id;
+            result.rightKnee = trackerB.id;
+        }
+    }
+    
+    // -- 识别臀部和胸部 (剩下的追踪器) --
+    if (activeTrackers.size() >= 5) {
+        result.waist = activeTrackers[4].id;
+    }
+    if (activeTrackers.size() >= 6) {
+        result.chest = activeTrackers[5].id;
+    }
+    
+    return true;
+}
+
+
 inline vr::HmdQuaternion_t operator*(const vr::HmdQuaternion_t& lhs, const vr::HmdQuaternion_t& rhs) {
 	return {
 		(lhs.w * rhs.w) - (lhs.x * rhs.x) - (lhs.y * rhs.y) - (lhs.z * rhs.z),
@@ -481,11 +593,11 @@ void CalibrationTick(double time)
 		}
 	});
 	// 校准后的pose
-	// shmem.ReadCalibratedPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
-	// 	if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
-	// 		ctx.deviceCalibratedPoses[augmented_pose.deviceId] = augmented_pose.pose;
-	// 	}
-	// });
+	shmem.ReadCalibratedPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
+		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
+			ctx.deviceCalibratedPoses[augmented_pose.deviceId] = augmented_pose.pose;
+		}
+	});
 	// ApplyReferenceScale();
 	// check for non-updating headset tracking space (caused by quest out of bounds or taken off head for example) and abort everything for this tick
 	auto p = ctx.devicePoses[vr::k_unTrackedDeviceIndex_Hmd].vecPosition;

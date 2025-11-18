@@ -23,3 +23,13 @@ struct VRState
 
 	static VRState Load();
 };
+struct BodyTrackerIDs {
+    int hmd = 0;
+    int chest = -1;
+    int waist = -1;
+    int leftKnee = -1;
+    int rightKnee = -1;
+    int leftFoot = -1;
+    int rightFoot = -1;
+};
+bool findBodyTrackers(BodyTrackerIDs& result);

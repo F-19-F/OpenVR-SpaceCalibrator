@@ -364,9 +364,27 @@ void CCal_DrawSettings() {
 
 void CCal_DrawScales() {
 	auto state = LoadVRState();
+	if(ImGui::Button("Auto Detection")){
+		BodyTrackerIDs r;
+		if(findBodyTrackers(r)){
+			CalCtx.scalePairs[0].targetID = r.leftKnee;
+			CalCtx.scalePairs[0].referenceID = r.leftFoot;
+			CalCtx.scalePairs[1].targetID = r.rightKnee;
+			CalCtx.scalePairs[1].referenceID = r.rightFoot;
+			CalCtx.scalePairs[2].targetID = r.waist;
+			CalCtx.scalePairs[2].referenceID = r.chest;
+			CalCtx.scalePairs[3].targetID = r.chest;
+			CalCtx.scalePairs[3].referenceID = r.waist;
+			CalCtx.Log("Auto Detection success!");
+		}else{
+			CalCtx.Log("Auto Detection failed!");
+		}
+	}
 	BuildScalePairDeviceSelections(state,0);
 	BuildScalePairDeviceSelections(state,1);
+	BuildScalePairDeviceSelections(state,2);
 	BuildScalePairDeviceSelections(state,3);
+
 }
 void DrawVectorElement(const std::string id, const char* text, double* value, int defaultValue, const char* defaultValueStr) {
 	constexpr float CONTINUOUS_CALIBRATION_TRACKER_OFFSET_DELTA = 0.01f;

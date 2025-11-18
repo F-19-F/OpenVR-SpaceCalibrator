@@ -307,7 +307,7 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 		BlendTransform(tf, deviceWorldPose);
 		ApplyTransform(tf, pose);
 		// 校准后的pose，没有scale
-		// shmem.SetCalibratedPose(openVRID, pose);
+		shmem.SetCalibratedPose(openVRID, pose);
 		calibratedPoses[openVRID]=pose;
 
 		auto pos = convert(pose.vecPosition);
