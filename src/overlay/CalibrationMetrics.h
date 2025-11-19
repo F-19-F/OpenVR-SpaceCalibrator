@@ -3,6 +3,7 @@
 #include <deque>
 #include <utility>
 #include <Eigen/Dense>
+#include <mutex>
 
 namespace Metrics {
 	extern double TimeSpan, CurrentTime;
@@ -16,8 +17,9 @@ namespace Metrics {
 		
 	public:
 		const std::deque<std::pair<double, T>> &data() const { return Data; }
-
+		mutable std::mutex dataMutex;
 		void Push(const T& data) {
+			std::lock_guard<std::mutex> lock(dataMutex);
 			Data.push_back(std::make_pair(CurrentTime, data));
 
 			double cutoff = CurrentTime - TimeSpan;

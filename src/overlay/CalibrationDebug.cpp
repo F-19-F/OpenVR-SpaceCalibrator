@@ -51,6 +51,7 @@ namespace {
 	}
 
 	void PlotLineG(const char* name, const Metrics::TimeSeries<double>& ts) {
+		std::lock_guard<std::mutex> lock(ts.dataMutex);
 		PlotLineG(name, [&](int index) {
 				const auto& p = ts[index];
 				return ImPlotPoint(p.first, p.second);
@@ -60,6 +61,7 @@ namespace {
 	}
 
 	void PlotVector(const char* namePrefix, const Metrics::TimeSeries<Eigen::Vector3d>& ts) {
+		std::lock_guard<std::mutex> lock(ts.dataMutex);
 		std::string name(namePrefix);
 		name += "X";
 		PlotLineG(name.c_str(), [&](int index) {
@@ -272,7 +274,7 @@ namespace {
 			ImPlot::SetupAxisLimits(ImAxis_Y1, 0, 0.003, ImGuiCond_Always);
 
 			AddApplyTicks();
-
+			std::lock_guard<std::mutex> lock(Metrics::axisIndependence.dataMutex);
 			ImPlot::PushColormap(axisVarianceColormap);
 			ImPlot::PushStyleVar(ImPlotStyleVar_FillAlpha, 0.5f);
 			ImPlot::SetNextLineStyle(ImVec4(1, 0, 0, 1));
@@ -304,7 +306,12 @@ namespace {
 				Metrics::axisIndependence.size()
 			);
 
-			PlotLineG("Datapoint", Metrics::axisIndependence);
+			PlotLineG("Datapoint", [&](int index) {
+				const auto& p = Metrics::axisIndependence[index];
+				return ImPlotPoint(p.first, p.second);
+				},
+				Metrics::axisIndependence.size()
+			);
 
 			ImPlot::PopStyleVar(1);
 			ImPlot::PopColormap(1);
