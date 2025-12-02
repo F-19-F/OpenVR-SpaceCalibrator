@@ -190,6 +190,7 @@ struct CalibrationContext
 
 	std::deque<Message> messages;
 	mutable std::mutex messagesMtx;
+	mutable std::mutex calibrationMtx;
 
 	void Log(const std::string &msg)
 	{

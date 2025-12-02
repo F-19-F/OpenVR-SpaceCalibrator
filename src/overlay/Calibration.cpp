@@ -488,6 +488,7 @@ void ScanAndApplyProfile(CalibrationContext &ctx)
 }
 
 void StartCalibration() {
+	std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
 	CalCtx.hasAppliedCalibrationResult = false;
 	AssignTargets();
 	CalCtx.state = CalibrationState::Begin;
@@ -501,19 +502,23 @@ void StartContinuousCalibration() {
 	CalCtx.hasAppliedCalibrationResult = false;
 	AssignTargets();
 	StartCalibration();
-	CalCtx.state = CalibrationState::Continuous;
-	calibration.setRelativeTransformation(CalCtx.refToTargetPose, CalCtx.relativePosCalibrated);
-	calibration.lockRelativePosition = CalCtx.lockRelativePosition;
-	if (CalCtx.lockRelativePosition) {
-		CalCtx.Log("Relative position locked");
+	{
+		std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
+		CalCtx.state = CalibrationState::Continuous;
+		calibration.setRelativeTransformation(CalCtx.refToTargetPose, CalCtx.relativePosCalibrated);
+		calibration.lockRelativePosition = CalCtx.lockRelativePosition;
+		if (CalCtx.lockRelativePosition) {
+			CalCtx.Log("Relative position locked");
+		}
+		else {
+			CalCtx.Log("Collecting initial samples...");
+		}
+		Metrics::WriteLogAnnotation("StartContinuousCalibration");
 	}
-	else {
-		CalCtx.Log("Collecting initial samples...");
-	}
-	Metrics::WriteLogAnnotation("StartContinuousCalibration");
 }
 
 void EndContinuousCalibration() {
+	std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
 	CalCtx.state = CalibrationState::None;
 	CalCtx.relativePosCalibrated = false;
 	SaveProfile(CalCtx);
@@ -568,6 +573,7 @@ void ApplyReferenceScale() {
 }
 void CalibrationTick(double time)
 {
+	std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
 	if (!vr::VRSystem())
 		return;
 
