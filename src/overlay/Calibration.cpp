@@ -486,9 +486,7 @@ void ScanAndApplyProfile(CalibrationContext &ctx)
 		}
 	}
 }
-
-void StartCalibration() {
-	std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
+void StartCalibrationUnlocked() {
 	CalCtx.hasAppliedCalibrationResult = false;
 	AssignTargets();
 	CalCtx.state = CalibrationState::Begin;
@@ -497,32 +495,40 @@ void StartCalibration() {
 	calibration.Clear();
 	Metrics::WriteLogAnnotation("StartCalibration");
 }
-
-void StartContinuousCalibration() {
-	CalCtx.hasAppliedCalibrationResult = false;
-	AssignTargets();
-	StartCalibration();
-	{
-		std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
-		CalCtx.state = CalibrationState::Continuous;
-		calibration.setRelativeTransformation(CalCtx.refToTargetPose, CalCtx.relativePosCalibrated);
-		calibration.lockRelativePosition = CalCtx.lockRelativePosition;
-		if (CalCtx.lockRelativePosition) {
-			CalCtx.Log("Relative position locked");
-		}
-		else {
-			CalCtx.Log("Collecting initial samples...");
-		}
-		Metrics::WriteLogAnnotation("StartContinuousCalibration");
-	}
+void StartCalibration() {
+	std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
+	StartCalibrationUnlocked();
 }
 
-void EndContinuousCalibration() {
+void StartContinuousCalibrationUnlocked() {
+	CalCtx.hasAppliedCalibrationResult = false;
+	AssignTargets();
+	StartCalibrationUnlocked();
+	CalCtx.state = CalibrationState::Continuous;
+	calibration.setRelativeTransformation(CalCtx.refToTargetPose, CalCtx.relativePosCalibrated);
+	calibration.lockRelativePosition = CalCtx.lockRelativePosition;
+	if (CalCtx.lockRelativePosition) {
+		CalCtx.Log("Relative position locked");
+	}
+	else {
+		CalCtx.Log("Collecting initial samples...");
+	}
+	Metrics::WriteLogAnnotation("StartContinuousCalibration");
+}
+
+void StartContinuousCalibration() {
 	std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
+	StartContinuousCalibrationUnlocked();
+}
+void EndContinuousCalibrationUnlocked() {
 	CalCtx.state = CalibrationState::None;
 	CalCtx.relativePosCalibrated = false;
 	SaveProfile(CalCtx);
 	Metrics::WriteLogAnnotation("EndContinuousCalibration");
+}
+void EndContinuousCalibration() {
+	std::lock_guard<std::mutex> lock(CalCtx.calibrationMtx);
+	EndContinuousCalibrationUnlocked();
 }
 void ApplyReferenceScale() {
 	// CalCtx.Log("ApplyReferenceScale");
@@ -627,7 +633,7 @@ void CalibrationTick(double time)
 
 	if (ctx.state == CalibrationState::ContinuousStandby) {
 		if (AssignTargets()) {
-			StartContinuousCalibration();
+			StartContinuousCalibrationUnlocked();
 		}
 		else {
 			ctx.wantedUpdateInterval = 0.5;
