@@ -21,7 +21,7 @@ struct TrackerInfo {
 };
 
 bool findBodyTrackers(BodyTrackerIDs& result) {
-
+	std::lock_guard<std::mutex> lock(CalCtx.poseMtx);
     // 1. 确认头显(HMD)是有效的
     const vr::DriverPose_t& hmdPose = CalCtx.devicePoses[vr::k_unTrackedDeviceIndex_Hmd];
     if (!hmdPose.poseIsValid || !hmdPose.deviceIsConnected) {
@@ -273,13 +273,12 @@ namespace {
 	bool CollectSample(const CalibrationContext& ctx)
 	{
 		vr::DriverPose_t reference, target;
-		reference.poseIsValid = false;
-		reference.result = vr::ETrackingResult::TrackingResult_Uninitialized;
-		target.poseIsValid = false;
-		target.result = vr::ETrackingResult::TrackingResult_Uninitialized;
-
-		reference = ctx.devicePoses[ctx.referenceID];
-		target = ctx.devicePoses[ctx.targetID];
+		
+		{
+			std::lock_guard<std::mutex> lock(CalCtx.poseMtx);
+			reference = ctx.devicePoses[ctx.referenceID];
+			target = ctx.devicePoses[ctx.targetID];
+		}
 
 		bool ok = true;
 		if (!reference.poseIsValid && reference.result != vr::ETrackingResult::TrackingResult_Running_OK)
@@ -598,18 +597,22 @@ void CalibrationTick(double time)
 	}
 
 	ctx.timeLastTick = time;
-	// 获取原始的坐标，即hook前的
-	shmem.ReadNewPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
-		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
-			ctx.devicePoses[augmented_pose.deviceId] = augmented_pose.pose;
-		}
-	});
-	// 校准后的pose
-	shmem.ReadCalibratedPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
-		if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
-			ctx.deviceCalibratedPoses[augmented_pose.deviceId] = augmented_pose.pose;
-		}
-	});
+	{
+		std::lock_guard<std::mutex> lock(CalCtx.poseMtx);
+		// 获取原始的坐标，即hook前的
+		shmem.ReadNewPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
+			if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
+				ctx.devicePoses[augmented_pose.deviceId] = augmented_pose.pose;
+			}
+		});
+		// 校准后的pose
+		shmem.ReadCalibratedPoses([&](const protocol::DriverPoseShmem::AugmentedPose& augmented_pose) {
+			if (augmented_pose.deviceId >= 0 && augmented_pose.deviceId <= vr::k_unMaxTrackedDeviceCount) {
+				ctx.deviceCalibratedPoses[augmented_pose.deviceId] = augmented_pose.pose;
+			}
+		});
+	}
+
 	// ApplyReferenceScale();
 	// check for non-updating headset tracking space (caused by quest out of bounds or taken off head for example) and abort everything for this tick
 	auto p = ctx.devicePoses[vr::k_unTrackedDeviceIndex_Hmd].vecPosition;

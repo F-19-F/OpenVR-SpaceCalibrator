@@ -191,6 +191,7 @@ struct CalibrationContext
 	std::deque<Message> messages;
 	mutable std::mutex messagesMtx;
 	mutable std::mutex calibrationMtx;
+	mutable std::mutex poseMtx;
 
 	void Log(const std::string &msg)
 	{
@@ -228,11 +229,13 @@ struct CalibrationContext
 	}
 
 	bool TargetPoseIsValidSimple() const {
+		std::lock_guard<std::mutex> lock(poseMtx);
 		return targetID >= 0 && targetID <= vr::k_unMaxTrackedDeviceCount
 			&& devicePoses[targetID].poseIsValid && devicePoses[targetID].result == vr::ETrackingResult::TrackingResult_Running_OK;
 	}
 
 	bool ReferencePoseIsValidSimple() const {
+		std::lock_guard<std::mutex> lock(poseMtx);
 		return referenceID >= 0 && referenceID <= vr::k_unMaxTrackedDeviceCount
 			&& devicePoses[referenceID].poseIsValid && devicePoses[referenceID].result == vr::ETrackingResult::TrackingResult_Running_OK;
 	}
