@@ -478,20 +478,29 @@ void CCal_BasicInfo() {
 
 	float width = ImGui::GetWindowContentRegionWidth(), scale = 1.0f;
 
-	if (ImGui::BeginTable("##CCal_Cancel", Metrics::enableLogs ? 3 : 2, 0, ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
+	if (ImGui::BeginTable("##CCal_Cancel", Metrics::enableLogs ? 4 : 2, 0, ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
 		if (ImGui::Button("Cancel Continuous Calibration", ImVec2(-FLT_MIN, 0.0f))) {
 			EndContinuousCalibration();
 		}
 
+
 		ImGui::TableSetColumnIndex(1);
-		if (ImGui::Button("Debug: Force break calibration", ImVec2(-FLT_MIN, 0.0f))) {
-			DebugApplyRandomOffset();
+		if (ImGui::Button("Save Chaperone Bounds", ImVec2(-FLT_MIN, 0.0f)))
+		{
+			if(CalCtx.validProfile){
+				SaveBaseSpaceChaperone();
+				SaveProfile(CalCtx);
+			}
 		}
 
 		if (Metrics::enableLogs) {
 			ImGui::TableSetColumnIndex(2);
+			if (ImGui::Button("Debug: Force break calibration", ImVec2(-FLT_MIN, 0.0f))) {
+				DebugApplyRandomOffset();
+			}
+			ImGui::TableSetColumnIndex(3);
 			if (ImGui::Button("Debug: Mark logs", ImVec2(-FLT_MIN, 0.0f))) {
 				Metrics::WriteLogAnnotation("MARK LOGS");
 			}

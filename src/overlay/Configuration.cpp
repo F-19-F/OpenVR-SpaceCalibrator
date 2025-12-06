@@ -186,6 +186,42 @@ static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
 			ctx.chaperone.valid = true;
 		}
 	}
+    if (obj["auto_chaperone"].is<picojson::object>()) {
+        auto autoChapObj = obj["auto_chaperone"].get<picojson::object>();
+
+        if (autoChapObj["play_space_size"].is<picojson::array>()) {
+            LoadFloatArray(autoChapObj["play_space_size"], ctx.autoChaperone.playSpaceSize.v, 2);
+        }
+
+        if (autoChapObj["standing_center"].is<picojson::array>()) {
+            std::vector<float> matData(16);
+            LoadFloatArray(autoChapObj["standing_center"], matData.data(), 16);
+            
+            ctx.autoChaperone.standingCenterInBaseSpace = Eigen::Affine3f(
+                Eigen::Map<Eigen::Matrix4f>(matData.data())
+            );
+        }
+
+
+        if (autoChapObj["geometry"].is<picojson::array>()) {
+            auto& geometryArr = autoChapObj["geometry"].get<picojson::array>();
+            size_t totalFloats = geometryArr.size();
+            size_t floatsPerQuad = sizeof(vr::HmdQuad_t) / sizeof(float); // 通常是 12
+
+            if (totalFloats > 0 && (totalFloats % floatsPerQuad == 0)) {
+                size_t quadCount = totalFloats / floatsPerQuad;
+                ctx.autoChaperone.originalGeometry.resize(quadCount);
+                
+                LoadFloatArray(
+                    autoChapObj["geometry"], 
+                    (float*)ctx.autoChaperone.originalGeometry.data(), 
+                    totalFloats
+                );
+
+                ctx.autoChaperone.valid = true;
+            }
+        }
+    }
 	if (obj["relative_pos_calibrated"].is<bool>()) {
 		ctx.relativePosCalibrated = obj["relative_pos_calibrated"].get<bool>();
 	}
@@ -284,6 +320,31 @@ static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
 
 		profile["chaperone"].set<picojson::object>(chaperone);
 	}
+
+    if (ctx.autoChaperone.valid) {
+        picojson::object autoChaperoneObj;
+
+        autoChaperoneObj["play_space_size"].set<picojson::array>(FloatArray(ctx.autoChaperone.playSpaceSize.v, 2));
+
+
+        auto& matrix = ctx.autoChaperone.standingCenterInBaseSpace.matrix();
+        autoChaperoneObj["standing_center"].set<picojson::array>(FloatArray(
+            (float*)matrix.data(), 
+            16 // 4x4 matrix
+        ));
+
+
+        if (!ctx.autoChaperone.originalGeometry.empty()) {
+            size_t floatCount = ctx.autoChaperone.originalGeometry.size() * (sizeof(vr::HmdQuad_t) / sizeof(float));
+            
+            autoChaperoneObj["geometry"].set<picojson::array>(FloatArray(
+                (float*)ctx.autoChaperone.originalGeometry.data(),
+                floatCount
+            ));
+        }
+
+        profile["auto_chaperone"].set<picojson::object>(autoChaperoneObj);
+    }
 
 	Eigen::Vector3d refToTragetRoation = ctx.refToTargetPose.rotation().eulerAngles(0, 1, 2);
 	Eigen::Vector3d refToTargetTranslation = ctx.refToTargetPose.translation();

@@ -135,8 +135,22 @@ struct CalibrationContext
 			0.0f, 1.0f, 0.0f, 0.0f,
 			0.0f, 0.0f, 1.0f, 0.0f,
 		};
-		vr::HmdVector2_t playSpaceSize = { 0.0f, 0.0f };
-	} chaperone;
+		vr::HmdVector2_t playSpaceSize;
+	};
+
+	struct AutoChaperone
+	{
+		bool valid = false;
+		bool hasAppliedOnce = false;
+		Eigen::Affine3f standingCenterInBaseSpace;
+		std::vector<vr::HmdQuad_t> originalGeometry;
+		vr::HmdVector2_t playSpaceSize;
+
+		Eigen::Affine3f lastAppliedBaseToRaw;
+	};
+
+	struct Chaperone chaperone;
+	struct AutoChaperone autoChaperone;
 
 	void ClearLogOnMessage() {
 		clearOnLog = true;
@@ -148,6 +162,14 @@ struct CalibrationContext
 		chaperone.standingCenter = vr::HmdMatrix34_t();
 		chaperone.playSpaceSize = vr::HmdVector2_t();
 		chaperone.valid = false;
+
+		autoChaperone.originalGeometry.clear();
+		autoChaperone.standingCenterInBaseSpace.setIdentity();
+		autoChaperone.originalGeometry.clear();
+		autoChaperone.playSpaceSize = vr::HmdVector2_t();
+		autoChaperone.valid = false;
+		autoChaperone.hasAppliedOnce = false;
+
 
 		calibratedRotation = Eigen::Vector3d();
 		calibratedTranslation = Eigen::Vector3d();
@@ -250,6 +272,8 @@ void StartContinuousCalibration();
 void EndContinuousCalibration();
 void LoadChaperoneBounds();
 void ApplyChaperoneBounds();
+void SaveBaseSpaceChaperone();
+void ApplyBaseSpaceChaperone();
 
 void PushCalibrationApplyTime();
 void ShowCalibrationDebug(int r, int c);

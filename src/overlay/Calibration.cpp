@@ -795,6 +795,7 @@ void CalibrationTick(double time)
 		auto vrRot = VRRotationQuat(Eigen::Quaterniond(calibration.Transformation().rotation()));
 
 		ctx.validProfile = true;
+		ApplyBaseSpaceChaperone();
 		SaveProfile(ctx);
 
 		ScanAndApplyProfile(ctx);
@@ -827,6 +828,128 @@ void CalibrationTick(double time)
 	}
 }
 
+
+Eigen::Affine3f GetCurrentBaseToRawTransform()
+{
+	double roll_rad = CalCtx.calibratedRotation(0) * EIGEN_PI / 180.0;
+	double yaw_rad = CalCtx.calibratedRotation(1) * EIGEN_PI / 180.0;
+	double pitch_rad = CalCtx.calibratedRotation(2) * EIGEN_PI / 180.0;
+
+	Eigen::Matrix3d rotationMatrix = (
+		Eigen::AngleAxisd(roll_rad, Eigen::Vector3d::UnitZ()) *
+		Eigen::AngleAxisd(yaw_rad, Eigen::Vector3d::UnitY()) *
+		Eigen::AngleAxisd(pitch_rad, Eigen::Vector3d::UnitX())
+		).toRotationMatrix();
+
+	Eigen::Vector3d translationVector = CalCtx.calibratedTranslation / 100.0;
+
+	return (Eigen::Translation3d(translationVector) * rotationMatrix).cast<float>();
+}
+
+const float kTranslationThreshold = 0.02f; // 2 cm
+const float kRotationThreshold = 1.0f * (float)EIGEN_PI / 180.0f; // 1 degree in radians
+
+void SaveBaseSpaceChaperone()
+{
+	if (!vr::VRChaperoneSetup()) {
+		CalCtx.Log("VRChaperoneSetup not available\n");
+		return;
+	}
+
+	vr::VRChaperoneSetup()->RevertWorkingCopy();
+
+	// 1. 获取原始几何体 (相对于 Standing Space)
+	uint32_t quadCount = 0;
+	vr::VRChaperoneSetup()->GetLiveCollisionBoundsInfo(nullptr, &quadCount);
+	if (quadCount == 0) return;
+
+	CalCtx.autoChaperone.originalGeometry.resize(quadCount);
+	vr::VRChaperoneSetup()->GetLiveCollisionBoundsInfo(CalCtx.autoChaperone.originalGeometry.data(), &quadCount);
+
+	// 获取 Play Area Size
+	float sizeX, sizeZ;
+	vr::VRChaperoneSetup()->GetWorkingPlayAreaSize(&sizeX, &sizeZ);
+	CalCtx.autoChaperone.playSpaceSize = { sizeX, sizeZ };
+
+	// 2. 获取当前的 Standing Zero Pose (Standing -> Raw)
+	vr::HmdMatrix34_t liveStandingCenterRaw;
+	vr::VRChaperoneSetup()->GetWorkingStandingZeroPoseToRawTrackingPose(&liveStandingCenterRaw);
+
+	// 转换为 Eigen (使用 Matrix4f)
+	Eigen::Matrix4f m;
+	m << liveStandingCenterRaw.m[0][0], liveStandingCenterRaw.m[0][1], liveStandingCenterRaw.m[0][2], liveStandingCenterRaw.m[0][3],
+		liveStandingCenterRaw.m[1][0], liveStandingCenterRaw.m[1][1], liveStandingCenterRaw.m[1][2], liveStandingCenterRaw.m[1][3],
+		liveStandingCenterRaw.m[2][0], liveStandingCenterRaw.m[2][1], liveStandingCenterRaw.m[2][2], liveStandingCenterRaw.m[2][3],
+		0.0f, 0.0f, 0.0f, 1.0f; // 字面量加 f
+
+	Eigen::Affine3f T_standing_to_raw(m); // Affine3f
+
+	// 3. 获取 Base -> Raw 变换 (假设此函数现在返回 Affine3f，如果返回 Affine3d 请加 .cast<float>())
+	Eigen::Affine3f T_base_to_raw = GetCurrentBaseToRawTransform();
+
+	// 4. 计算并保存 Standing Center 在 Base 空间下的位姿
+	CalCtx.autoChaperone.standingCenterInBaseSpace = T_base_to_raw.inverse() * T_standing_to_raw;
+
+	CalCtx.autoChaperone.valid = true;
+	CalCtx.Log("Saved room-scale chaperone relative to base device.\n");
+}
+
+void ApplyBaseSpaceChaperone()
+{
+	if (!CalCtx.autoChaperone.valid || !vr::VRChaperoneSetup()) return;
+
+
+	auto AffineToHmdMatrix34 = [](const Eigen::Affine3f& affine) {
+		vr::HmdMatrix34_t mat;
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 4; ++j) mat.m[i][j] = affine.matrix()(i, j);
+		}
+		return mat;
+		};
+
+	Eigen::Affine3f currentBaseToRaw = GetCurrentBaseToRawTransform(); // Affine3f
+
+	if (CalCtx.autoChaperone.hasAppliedOnce) {
+
+		float distDelta = (currentBaseToRaw.translation() - CalCtx.autoChaperone.lastAppliedBaseToRaw.translation()).norm();
+
+		Eigen::Matrix3f rotationDiff = currentBaseToRaw.rotation() * CalCtx.autoChaperone.lastAppliedBaseToRaw.rotation().inverse();
+
+		float angleDelta = std::abs(Eigen::AngleAxisf(rotationDiff).angle());
+
+		if (distDelta < kTranslationThreshold && angleDelta < kRotationThreshold) {
+			return;
+		}
+
+		char buf[256];
+		snprintf(buf, sizeof buf, "Calibration changed significantly (Dist: %.3fm, Ang: %.2f deg). Updating chaperone...\n",
+			distDelta, angleDelta * 180.0f / (float)EIGEN_PI);
+		CalCtx.Log(buf);
+	}
+
+
+	Eigen::Affine3f T_new_standing_to_raw = currentBaseToRaw * CalCtx.autoChaperone.standingCenterInBaseSpace;
+
+	vr::VRChaperoneSetup()->RevertWorkingCopy();
+	vr::VRChaperoneSetup()->SetWorkingCollisionBoundsInfo(
+		CalCtx.autoChaperone.originalGeometry.data(),
+		(uint32_t)CalCtx.autoChaperone.originalGeometry.size()
+	);
+
+	vr::HmdMatrix34_t newCenterMat = AffineToHmdMatrix34(T_new_standing_to_raw);
+	vr::VRChaperoneSetup()->SetWorkingStandingZeroPoseToRawTrackingPose(&newCenterMat);
+
+	vr::VRChaperoneSetup()->SetWorkingPlayAreaSize(
+		CalCtx.autoChaperone.playSpaceSize.v[0],
+		CalCtx.autoChaperone.playSpaceSize.v[1]
+	);
+
+	vr::VRChaperoneSetup()->CommitWorkingCopy(vr::EChaperoneConfigFile_Live);
+
+	CalCtx.autoChaperone.lastAppliedBaseToRaw = currentBaseToRaw;
+	CalCtx.autoChaperone.hasAppliedOnce = true;
+	CalCtx.Log("Applied room-scale chaperone bounds.\n");
+}
 void LoadChaperoneBounds()
 {
 	vr::VRChaperoneSetup()->RevertWorkingCopy();
