@@ -142,6 +142,7 @@ struct CalibrationContext
 	{
 		bool valid = false;
 		bool hasAppliedOnce = false;
+		bool autoApply = false;
 		Eigen::Affine3f standingCenterInBaseSpace;
 		std::vector<vr::HmdQuad_t> originalGeometry;
 		vr::HmdVector2_t playSpaceSize;
@@ -273,7 +274,7 @@ void EndContinuousCalibration();
 void LoadChaperoneBounds();
 void ApplyChaperoneBounds();
 void SaveBaseSpaceChaperone();
-void ApplyBaseSpaceChaperone();
+void ApplyBaseSpaceChaperone(bool force = false);
 
 void PushCalibrationApplyTime();
 void ShowCalibrationDebug(int r, int c);

@@ -846,8 +846,8 @@ Eigen::Affine3f GetCurrentBaseToRawTransform()
 	return (Eigen::Translation3d(translationVector) * rotationMatrix).cast<float>();
 }
 
-const float kTranslationThreshold = 0.02f; // 2 cm
-const float kRotationThreshold = 1.0f * (float)EIGEN_PI / 180.0f; // 1 degree in radians
+const float kTranslationThreshold = 0.05f; // 5 cm
+const float kRotationThreshold = 10.0f * (float)EIGEN_PI / 180.0f; // 10 degree in radians
 
 void SaveBaseSpaceChaperone()
 {
@@ -893,23 +893,26 @@ void SaveBaseSpaceChaperone()
 	CalCtx.autoChaperone.valid = true;
 	CalCtx.Log("Saved room-scale chaperone relative to base device.\n");
 }
-
-void ApplyBaseSpaceChaperone()
+#pragma pack(push, 1)
+struct SteamVRChaperoneData {
+    float playAreaX;
+    float playAreaZ;
+    struct Point { float x, y, z; };
+    Point collisionBounds[4];
+    float hmdMatrix34[12];
+};
+#pragma pack(pop)
+void SendToRemoteServer(const SteamVRChaperoneData& data);
+void ApplyBaseSpaceChaperone(bool force)
 {
-	if (!CalCtx.autoChaperone.valid || !vr::VRChaperoneSetup()) return;
+	if (!CalCtx.autoChaperone.valid || !vr::VRChaperoneSetup() || (!CalCtx.autoChaperone.autoApply && !force)) return;
 
 
-	auto AffineToHmdMatrix34 = [](const Eigen::Affine3f& affine) {
-		vr::HmdMatrix34_t mat;
-		for (int i = 0; i < 3; ++i) {
-			for (int j = 0; j < 4; ++j) mat.m[i][j] = affine.matrix()(i, j);
-		}
-		return mat;
-		};
+
 
 	Eigen::Affine3f currentBaseToRaw = GetCurrentBaseToRawTransform(); // Affine3f
 
-	if (CalCtx.autoChaperone.hasAppliedOnce) {
+	if (CalCtx.autoChaperone.hasAppliedOnce && !force) {
 
 		float distDelta = (currentBaseToRaw.translation() - CalCtx.autoChaperone.lastAppliedBaseToRaw.translation()).norm();
 
@@ -935,16 +938,26 @@ void ApplyBaseSpaceChaperone()
 		CalCtx.autoChaperone.originalGeometry.data(),
 		(uint32_t)CalCtx.autoChaperone.originalGeometry.size()
 	);
-
+	auto AffineToHmdMatrix34 = [](const Eigen::Affine3f& affine) {
+		vr::HmdMatrix34_t mat;
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 4; ++j) mat.m[i][j] = affine.matrix()(i, j);
+		}
+		return mat;
+	};
 	vr::HmdMatrix34_t newCenterMat = AffineToHmdMatrix34(T_new_standing_to_raw);
 	vr::VRChaperoneSetup()->SetWorkingStandingZeroPoseToRawTrackingPose(&newCenterMat);
-
 	vr::VRChaperoneSetup()->SetWorkingPlayAreaSize(
 		CalCtx.autoChaperone.playSpaceSize.v[0],
 		CalCtx.autoChaperone.playSpaceSize.v[1]
 	);
 
 	vr::VRChaperoneSetup()->CommitWorkingCopy(vr::EChaperoneConfigFile_Live);
+	vr::VRChaperoneSetup()->RevertWorkingCopy();
+	SteamVRChaperoneData packet;
+	packet.playAreaX = -1;
+	packet.playAreaZ = -1;
+	SendToRemoteServer(packet);
 
 	CalCtx.autoChaperone.lastAppliedBaseToRaw = currentBaseToRaw;
 	CalCtx.autoChaperone.hasAppliedOnce = true;

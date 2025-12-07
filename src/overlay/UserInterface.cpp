@@ -478,7 +478,7 @@ void CCal_BasicInfo() {
 
 	float width = ImGui::GetWindowContentRegionWidth(), scale = 1.0f;
 
-	if (ImGui::BeginTable("##CCal_Cancel", Metrics::enableLogs ? 4 : 2, 0, ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
+	if (ImGui::BeginTable("##CCal_Cancel", Metrics::enableLogs ? 5 : 3, 0, ImVec2(width * scale, ImGui::GetTextLineHeight() * 2))) {
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
 		if (ImGui::Button("Cancel Continuous Calibration", ImVec2(-FLT_MIN, 0.0f))) {
@@ -494,13 +494,20 @@ void CCal_BasicInfo() {
 				SaveProfile(CalCtx);
 			}
 		}
+		ImGui::TableSetColumnIndex(2);
+		if (ImGui::Button("Apply Chaperone Bounds", ImVec2(-FLT_MIN, 0.0f)))
+		{
+			if(CalCtx.validProfile){
+				ApplyBaseSpaceChaperone(true);
+			}
+		}
 
 		if (Metrics::enableLogs) {
-			ImGui::TableSetColumnIndex(2);
+			ImGui::TableSetColumnIndex(3);
 			if (ImGui::Button("Debug: Force break calibration", ImVec2(-FLT_MIN, 0.0f))) {
 				DebugApplyRandomOffset();
 			}
-			ImGui::TableSetColumnIndex(3);
+			ImGui::TableSetColumnIndex(4);
 			if (ImGui::Button("Debug: Mark logs", ImVec2(-FLT_MIN, 0.0f))) {
 				Metrics::WriteLogAnnotation("MARK LOGS");
 			}
@@ -519,6 +526,8 @@ void CCal_BasicInfo() {
 	ImGui::SameLine();
 	ImGui::Checkbox("Require triggers", &CalCtx.requireTriggerPressToApply);
 	ImGui::Checkbox("Ignore outliers", &CalCtx.ignoreOutliers);
+	ImGui::SameLine();
+	ImGui::Checkbox("Auto chaperone", &CalCtx.autoChaperone.autoApply);
 
 	// Status field...
 

@@ -683,7 +683,8 @@ void CheckGithubVersionInstalledOnSteam() {
 		}
 	}
 }
-
+void startNetworkSender();
+void stopNetworkSender();
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
 	if (_getcwd(cwd, MAX_PATH) == nullptr) {
@@ -740,8 +741,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		InitCalibrator();
 		LoadProfile(CalCtx);
 		std::thread calibrationThread(CalibrationWorker);
+		startNetworkSender();
 		RunLoop();
-
+		stopNetworkSender();
 		{
 			std::lock_guard<std::mutex> lock(g_calibrationMutex);
 			g_calibrationWorkerRunning = false;

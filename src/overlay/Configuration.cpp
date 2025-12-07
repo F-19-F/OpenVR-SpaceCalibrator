@@ -188,7 +188,9 @@ static void ParseProfile(CalibrationContext &ctx, std::istream &stream)
 	}
     if (obj["auto_chaperone"].is<picojson::object>()) {
         auto autoChapObj = obj["auto_chaperone"].get<picojson::object>();
-
+		if (autoChapObj["auto_apply"].is<bool>()) {
+			ctx.autoChaperone.autoApply = autoChapObj["auto_apply"].get<bool>();
+		}
         if (autoChapObj["play_space_size"].is<picojson::array>()) {
             LoadFloatArray(autoChapObj["play_space_size"], ctx.autoChaperone.playSpaceSize.v, 2);
         }
@@ -323,7 +325,7 @@ static void WriteProfile(CalibrationContext &ctx, std::ostream &out)
 
     if (ctx.autoChaperone.valid) {
         picojson::object autoChaperoneObj;
-
+		autoChaperoneObj["auto_apply"].set<bool>(ctx.autoChaperone.autoApply);
         autoChaperoneObj["play_space_size"].set<picojson::array>(FloatArray(ctx.autoChaperone.playSpaceSize.v, 2));
 
 
