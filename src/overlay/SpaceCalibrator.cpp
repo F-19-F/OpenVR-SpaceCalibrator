@@ -482,7 +482,7 @@ void RunLoop() {
 			BuildMainWindow(dashboardVisible);
 
 			// @TODO: Move to a separate function, for now it works
-			static bool githubPopupDismissed = false;
+			static bool githubPopupDismissed = true;
 
 			if (s_isGitHubVersionInstalled && !githubPopupDismissed) {
 				ImGui::OpenPopup("Conflicting Space Calibrator install");
