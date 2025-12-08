@@ -12,6 +12,8 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext *pDriver
 
 	memset(transforms, 0, vr::k_unMaxTrackedDeviceCount * sizeof DeviceTransform);
 	memset(&alignmentSpeedParams, 0, sizeof alignmentSpeedParams);
+	debugTransform = Eigen::Vector3d::Zero();
+	debugRotation = Eigen::Quaterniond::Identity();
 
 	alignmentSpeedParams.thr_rot_tiny = 0.1f * (EIGEN_PI / 180.0f);
 	alignmentSpeedParams.thr_rot_small = 1.0f * (EIGEN_PI / 180.0f);
@@ -29,8 +31,6 @@ vr::EVRInitError ServerTrackedDeviceProvider::Init(vr::IVRDriverContext *pDriver
 	server.Run();
 	shmem.Create(OPENVR_SPACECALIBRATOR_SHMEM_NAME);
 
-	debugTransform = Eigen::Vector3d::Zero();
-	debugRotation = Eigen::Quaterniond::Identity();
 
 	return vr::VRInitError_None;
 }
@@ -277,8 +277,8 @@ bool ServerTrackedDeviceProvider::HandleDevicePoseUpdated(uint32_t openVRID, vr:
 {
 	// Apply debug pose before anything else
 	if (openVRID > 0) {
-		auto dbgPos = convert(pose.vecPosition) + debugTransform;
-		auto dbgRot = convert(pose.qRotation) * debugRotation;
+		Eigen::Vector3d dbgPos = convert(pose.vecPosition) + debugTransform;
+		Eigen::Quaterniond dbgRot = convert(pose.qRotation) * debugRotation;
 		pose.qRotation = convert(dbgRot);
 		pose.vecPosition[0] = dbgPos(0);
 		pose.vecPosition[1] = dbgPos(1);
